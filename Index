@@ -192,7 +192,6 @@
                 refNeg.push(-Va(rad));
                 
                 let mod = t % 180;
-                let mod360 = t % 360;
                 
                 // Freewheeling diode cuts off negative voltage
                 if (mod >= alpha) {
