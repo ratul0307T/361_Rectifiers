@@ -1,1 +1,322 @@
-# 361_Rectifiers
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Electronics Converter Waveforms</title>
+    <!-- Load Plotly.js for interactive charting -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        select, input[type="range"] {
+            padding: 8px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        #alphaValueDisplay {
+            font-weight: bold;
+            color: #e74c3c;
+            min-width: 40px;
+            display: inline-block;
+        }
+        #plot {
+            width: 100%;
+            height: 500px;
+        }
+        .note {
+            font-size: 13px;
+            color: #7f8c8d;
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Converter Output Voltage Waveforms</h1>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="converterType">Select Converter Type:</label>
+            <select id="converterType">
+                <option value="1ph-hw">Single Phase - Half Wave Controlled (R Load)</option>
+                <option value="1ph-fw">Single Phase - Full Wave Fully Controlled (R Load)</option>
+                <option value="1ph-semi">Single Phase - Semi-Controlled / Freewheeling</option>
+                <option value="3ph-hw">Three Phase - Half Wave Controlled (R Load)</option>
+                <option value="3ph-fw">Three Phase - Full Wave Fully Controlled (Continuous / RL Load)</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="alphaSlider">Firing Angle (α): <span id="alphaValueDisplay">30°</span></label>
+            <input type="range" id="alphaSlider" min="0" max="180" value="30" step="1">
+        </div>
+    </div>
+
+    <div id="plot"></div>
+    <div class="note">
+        * Background thin lines represent the underlying AC input voltages (Phase or Line-to-Line depending on the converter). The bold red line is the resulting DC output voltage.
+    </div>
+</div>
+
+<script>
+    // Constants
+    const DEG2RAD = Math.PI / 180;
+
+    // DOM Elements
+    const typeSelect = document.getElementById('converterType');
+    const alphaSlider = document.getElementById('alphaSlider');
+    const alphaDisplay = document.getElementById('alphaValueDisplay');
+
+    // Event Listeners to update chart on change
+    typeSelect.addEventListener('change', updateChart);
+    alphaSlider.addEventListener('input', (e) => {
+        alphaDisplay.textContent = e.target.value + '°';
+        updateChart();
+    });
+
+    // Helper functions for 3-phase math
+    const Va = (rad) => Math.sin(rad);
+    const Vb = (rad) => Math.sin(rad - 120 * DEG2RAD);
+    const Vc = (rad) => Math.sin(rad - 240 * DEG2RAD);
+    
+    // Line-to-line voltages
+    const Vab = (rad) => Va(rad) - Vb(rad);
+    const Vac = (rad) => Va(rad) - Vc(rad);
+    const Vbc = (rad) => Vb(rad) - Vc(rad);
+    const Vba = (rad) => Vb(rad) - Va(rad);
+    const Vca = (rad) => Vc(rad) - Va(rad);
+    const Vcb = (rad) => Vc(rad) - Vb(rad);
+
+    function updateChart() {
+        const type = typeSelect.value;
+        const alpha = parseInt(alphaSlider.value);
+        
+        let t_values = [];
+        let v_out = [];
+        let traces = []; // Array to hold Plotly traces
+
+        // Generate Time/Angle axis (0 to 720 degrees for 2 full cycles)
+        for (let t = 0; t <= 720; t++) {
+            t_values.push(t);
+        }
+
+        // 1. SINGLE PHASE HALF-WAVE
+        if (type === '1ph-hw') {
+            let ref = [];
+            for (let t = 0; t <= 720; t++) {
+                let rad = t * DEG2RAD;
+                ref.push(Va(rad));
+                
+                let mod = t % 360;
+                if (mod >= alpha && mod <= 180) {
+                    v_out.push(Va(rad));
+                } else {
+                    v_out.push(0);
+                }
+            }
+            traces.push(createTrace(t_values, ref, 'AC Input', '#bdc3c7', 2, 'dash'));
+        }
+
+        // 2. SINGLE PHASE FULL-WAVE (FULLY CONTROLLED - R LOAD)
+        else if (type === '1ph-fw') {
+            let ref = [], refNeg = [];
+            for (let t = 0; t <= 720; t++) {
+                let rad = t * DEG2RAD;
+                ref.push(Va(rad));
+                refNeg.push(-Va(rad));
+                
+                let mod = t % 360;
+                // Positive half cycle
+                if (mod >= alpha && mod <= 180) {
+                    v_out.push(Va(rad));
+                } 
+                // Negative half cycle
+                else if (mod >= 180 + alpha && mod <= 360) {
+                    v_out.push(-Va(rad));
+                } 
+                else {
+                    v_out.push(0);
+                }
+            }
+            traces.push(createTrace(t_values, ref, 'Vs', '#bdc3c7', 2, 'dash'));
+            traces.push(createTrace(t_values, refNeg, '-Vs', '#bdc3c7', 2, 'dash'));
+        }
+
+        // 3. SINGLE PHASE SEMI-CONTROLLED (Same as Full wave R-load visually due to freewheeling)
+        else if (type === '1ph-semi') {
+            let ref = [], refNeg = [];
+            for (let t = 0; t <= 720; t++) {
+                let rad = t * DEG2RAD;
+                ref.push(Va(rad));
+                refNeg.push(-Va(rad));
+                
+                let mod = t % 180;
+                
+                // Freewheeling diode cuts off negative voltage
+                if (mod >= alpha) {
+                    v_out.push(Math.abs(Va(rad)));
+                } else {
+                    v_out.push(0);
+                }
+            }
+            traces.push(createTrace(t_values, ref, 'Vs', '#bdc3c7', 2, 'dash'));
+            traces.push(createTrace(t_values, refNeg, '-Vs', '#bdc3c7', 2, 'dash'));
+        }
+
+        // 4. THREE PHASE HALF-WAVE (R LOAD)
+        else if (type === '3ph-hw') {
+            let va_ref = [], vb_ref = [], vc_ref = [];
+            let triggers = [];
+            // Natural triggers at 30, 150, 270...
+            for (let i = -1; i <= 6; i++) triggers.push(30 + i * 120 + alpha);
+            let funcs = [Va, Vb, Vc];
+
+            for (let t = 0; t <= 720; t++) {
+                let rad = t * DEG2RAD;
+                va_ref.push(Va(rad));
+                vb_ref.push(Vb(rad));
+                vc_ref.push(Vc(rad));
+                
+                let active_idx = 0;
+                for (let i = 0; i < triggers.length - 1; i++) {
+                    if (t >= triggers[i] && t < triggers[i+1]) {
+                        active_idx = ((i % 3) + 3) % 3; // Ensure positive modulo
+                        break;
+                    }
+                }
+                
+                let val = funcs[active_idx](rad);
+                // R load clips negative voltage
+                v_out.push(val > 0 ? val : 0);
+            }
+            traces.push(createTrace(t_values, va_ref, 'Va', '#3498db', 1));
+            traces.push(createTrace(t_values, vb_ref, 'Vb', '#2ecc71', 1));
+            traces.push(createTrace(t_values, vc_ref, 'Vc', '#f1c40f', 1));
+        }
+
+        // 5. THREE PHASE FULL-WAVE (FULLY CONTROLLED - RL LOAD CONTINUOUS)
+        else if (type === '3ph-fw') {
+            let vab_r=[], vac_r=[], vbc_r=[], vba_r=[], vca_r=[], vcb_r=[];
+            let triggers = [];
+            // Natural triggers for 6-pulse start at 60, 120, 180...
+            for (let i = -2; i <= 15; i++) triggers.push(60 * i + alpha);
+            
+            // Sequence of active line voltages
+            let funcs = [Vab, Vac, Vbc, Vba, Vca, Vcb];
+
+            for (let t = 0; t <= 720; t++) {
+                let rad = t * DEG2RAD;
+                // Store references for background envelope
+                vab_r.push(Vab(rad)); vac_r.push(Vac(rad));
+                vbc_r.push(Vbc(rad)); vba_r.push(Vba(rad));
+                vca_r.push(Vca(rad)); vcb_r.push(Vcb(rad));
+                
+                let active_idx = 0;
+                for (let i = 0; i < triggers.length - 1; i++) {
+                    if (t >= triggers[i] && t < triggers[i+1]) {
+                        active_idx = ((i % 6) + 6) % 6;
+                        break;
+                    }
+                }
+                
+                // RL load implies continuous conduction (follows wave into negative)
+                v_out.push(funcs[active_idx](rad));
+            }
+            // Add all line voltages as faint background lines
+            const lineStyle = {color: 'rgba(189, 195, 199, 0.5)', width: 1};
+            traces.push({x: t_values, y: vab_r, type: 'scatter', mode: 'lines', line: lineStyle, showlegend: false});
+            traces.push({x: t_values, y: vac_r, type: 'scatter', mode: 'lines', line: lineStyle, showlegend: false});
+            traces.push({x: t_values, y: vbc_r, type: 'scatter', mode: 'lines', line: lineStyle, showlegend: false});
+            traces.push({x: t_values, y: vba_r, type: 'scatter', mode: 'lines', line: lineStyle, showlegend: false});
+            traces.push({x: t_values, y: vca_r, type: 'scatter', mode: 'lines', line: lineStyle, showlegend: false});
+            traces.push({x: t_values, y: vcb_r, type: 'scatter', mode: 'lines', line: lineStyle, showlegend: false});
+        }
+
+        // Add the Output Voltage trace (The main bold red line)
+        traces.push({
+            x: t_values,
+            y: v_out,
+            name: 'Output Voltage (Vdc)',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#e74c3c', width: 4 }
+        });
+
+        // Plotly layout configuration
+        const layout = {
+            title: 'Output Voltage vs Angle (Degrees)',
+            xaxis: { 
+                title: 'Angle (wt) in Degrees',
+                tickvals: [0, 90, 180, 270, 360, 450, 540, 630, 720],
+                range: [0, 720]
+            },
+            yaxis: { 
+                title: 'Amplitude',
+                range: type.includes('3ph-fw') ? [-2, 2] : [-1.5, 1.5] 
+            },
+            margin: { l: 50, r: 20, t: 40, b: 50 },
+            hovermode: 'x unified'
+        };
+
+        Plotly.newPlot('plot', traces, layout, {responsive: true});
+    }
+
+    // Helper to generate Plotly trace objects
+    function createTrace(x, y, name, color, width, dash = 'solid') {
+        return {
+            x: x,
+            y: y,
+            name: name,
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: color, width: width, dash: dash }
+        };
+    }
+
+    // Initial render
+    updateChart();
+</script>
+
+</body>
+</html>
